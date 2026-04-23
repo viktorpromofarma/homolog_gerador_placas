@@ -10,12 +10,29 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Models\TypePromotions;
+use App\Rules\ProductExists;
 
 class GenerateImage extends Controller
 {
     public function __invoke(Request $request)
     {
         $payloads = $request->payload;
+
+        try {
+             $request->validate([
+            'payload' => ['required', 'array'],
+            'payload.*.product' => ['required', new ProductExists],
+        ]);
+
+        } catch (\Throwable $th) {
+                return response()->json([
+                        'status'  => 'error',
+                        'message' => 'Produto(s) inválidos',
+                        'errors' => $th->getMessage()
+                ],422);
+        }
+
+        
         $results  = [];
         $requisicaoId = (string) \Illuminate\Support\Str::uuid();
 
