@@ -1,0 +1,14 @@
+services:
+  gerador_placas_php:
+    container_name: gerador_placas_php
+    build:
+      context: "./.docker"
+      dockerfile: Dockerfile
+    network_mode: host
+    ports:
+      - "9001:9000" # fpm
+      - "5175:5175" # vite
+    volumes:
+      - "./.:/var/www/html"
+
+ 
