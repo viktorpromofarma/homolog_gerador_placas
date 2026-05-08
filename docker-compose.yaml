@@ -5,10 +5,7 @@ services:
       context: "./.docker"
       dockerfile: Dockerfile
     network_mode: host
-    ports:
-      - "9001:9000" # fpm
-      - "5175:5175" # vite
+    environment:
+      - APP_PORT=9001
     volumes:
       - "./.:/var/www/html"
-
- 

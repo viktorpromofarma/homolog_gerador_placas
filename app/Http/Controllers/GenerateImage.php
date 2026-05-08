@@ -1,16 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Models\RequestGeneratorImage;
 use App\Models\RequestGeneratorImageProduct;
+use App\Models\TypePromotions;
+use App\Services\LabelService;
 use App\Services\PdfService;
 use App\Services\TemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use App\Models\TypePromotions;
-use App\Rules\ProductExists;
 
 class GenerateImage extends Controller
 {
@@ -18,13 +20,15 @@ class GenerateImage extends Controller
     {
         $payloads = $request->payload;
 
+      
+
         try {
              $request->validate([
             'payload' => ['required', 'array'],
-            'payload.*.product' => ['required', new ProductExists],
+         //   'payload.*.product' => ['required', new ProductExists],
         ]);
-
         } catch (\Throwable $th) {
+              
                 return response()->json([
                         'status'  => 'error',
                         'message' => 'Produto(s) inválidos',
@@ -32,33 +36,30 @@ class GenerateImage extends Controller
                 ],422);
         }
 
-        
         $results  = [];
         $requisicaoId = (string) \Illuminate\Support\Str::uuid();
-
-      
         foreach ($payloads as $payload) {
             $product = $this->store($request, $payload, $requisicaoId);
-
             if ($product instanceof JsonResponse) {
                 return $product;
             }
-
 
             $imageResponse = Http::acceptJson()
                 ->post(TemplateService::GENERATE_IMAGE_URL, [
                     'template_id'     => $request->template_id,
                     'store'           => $request->store,
+                    'type'            => $request->type,  
                     'impression_date' => $request->impression_date,
                     'payload'         => [
                         'product'             => $payload['product'],
+                        'quantity'            => $payload['quantity'],
                         'promotion'           => $payload['promotion'],
                         'description'         => $payload['description'],
+                        'barcode'             => $payload['ean'],
                         'ean'                 => $payload['ean'],
                         'max_price'           => $payload['max_price'],
                         'sail_price'          => $payload['sail_price'],
                         'promotion_price'     => $payload['promotion_price'],
-                        'promotion_title'     =>  $payload['promotion_title'],
                         'percentage_discount' => $payload['percentage_discount'],
                         'initial_date'        => $payload['initial_date'],
                         'final_date'          => $payload['final_date'],
@@ -70,8 +71,7 @@ class GenerateImage extends Controller
                         'Y'                   => $payload['Y'],
                     ],
                 ]);
-
-              
+           
            
 
             if ($imageResponse->failed()) {
@@ -84,23 +84,30 @@ class GenerateImage extends Controller
             }
 
             $base64Image = $imageResponse->json('image');
+            $quantity    = max(1, (int) ($payload['quantity'] ?? 1)); 
 
+          
+
+            for ($i = 0; $i < $quantity; $i++) {
             $results[] = [
                 'product'     => $payload['product'],
                 'imageBase64' => $base64Image,
                 'id'          => $product->REQUISICAO_GERADOR_PLACAS,
             ];
         }
-
+   }
+    
         $printResponse = $this->print(
             new Request([
                 'id'          => $results[0]['id'],
+                'type'        =>  $request->type,
                 'imageBase64' => array_column($results, 'imageBase64'),
             ])
         );
 
         $printData = json_decode($printResponse->getContent(), true);
 
+     
         RequestGeneratorImage::where('REQUISICAO_GERADOR_PLACAS', $results[0]['id'])
             ->update(['PATH_PDF' => public_path('img') . '/' . $printData['pdf']]);
 
@@ -108,16 +115,20 @@ class GenerateImage extends Controller
             return $printResponse;
         }
 
+      
+
         return response()->json([
             'status'      => 'success',
             'template_id' => $request->template_id,
             'products'    => $results,
+            'type'        => $request->type,
             'pdf'         => json_decode($printResponse->getContent(), true)['pdf'],
         ]);
     }
 
     public function print(Request $request): JsonResponse
     {
+       
         if (!$request->id) {
             return response()->json([
                 'status'  => 'error',
@@ -138,11 +149,25 @@ class GenerateImage extends Controller
 
         $images = $request->imageBase64;
 
-        $pdfPath = (new PdfService())->generate($images, 'print_' . $request->id);
+      
+
+    /**
+     * type 1 = ETIQUETA
+     * type 2 = PLACA
+     * 
+     * */
+
+        if($request->type == 1){
+            $pdfPath = (new LabelService())->generate($images, 'print_' . $request->id);
+        } elseif($request->type == 2 ) {
+            $pdfPath = (new PdfService())->generate($images, 'print_' . $request->id);
+        }
+
+
 
         return response()->json([
             'status' => 'success',
-            'pdf'    => $pdfPath,
+            'pdf'    => $pdfPath
         ]);
     }
 
@@ -161,12 +186,7 @@ class GenerateImage extends Controller
                 'REQUISICAO'      => $requisicaoId
             ];
 
-            if (RequestGeneratorImageProduct::alreadyExists($data)) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Request already exists',
-                ], 409);
-            }
+       
 
            if (!TypePromotions::isValid((int) $payload['promotion'])) {
             return response()->json([
@@ -174,7 +194,6 @@ class GenerateImage extends Controller
                 'message' => 'Promotion not found',
             ], 404);
         }
-
 
             $master = RequestGeneratorImage::firstOrCreate(
                 [

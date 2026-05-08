@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class TypePromotions extends Model
 {
     
-    protected $connection  = 'sqlsrv_secondary';
+    protected $connection  = 'sqlsrv';
 
     protected $table = 'TIPOS_ETIQUETAS_PLACAS';
 
@@ -34,6 +34,8 @@ class TypePromotions extends Model
             4 => 'Tabelas de Encartes - Tabloides',
             8 => 'Promoclube',
             9 => 'Descontos Progressivos',
+            10 => 'Produtos PV',
+            11 => 'Etiquetas de Gondola'
         ];
 
 
@@ -47,7 +49,7 @@ class TypePromotions extends Model
 
     public static function isValid(int $id): bool
         {
-            $validIds = [1, 2, 3, 4, 8, 9];
+            $validIds = [1, 2, 3, 4, 8, 9, 10, 11];
             return in_array($id, $validIds) && self::where('TIPO_ETIQUETA_PLACA', $id)->exists();
         }
 

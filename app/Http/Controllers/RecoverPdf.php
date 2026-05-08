@@ -1,15 +1,13 @@
 <?php 
 
+declare(strict_types=1);
+
 
 namespace App\Http\Controllers;
 
 use App\Models\RequestGeneratorImage;
-use App\Models\RequestGeneratorImageProduct;
-use App\Services\PdfService;
-use App\Services\TemplateService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+
 
 
 class RecoverPdf extends Controller
@@ -18,6 +16,7 @@ class RecoverPdf extends Controller
     public function __invoke(Request $request)
     {
         $pdfPath = $this->recoverPdf($request);
+        
         return response()->json([
             'status' => 'success',
             'result'   => $pdfPath

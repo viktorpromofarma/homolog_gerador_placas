@@ -36,7 +36,6 @@ class RequestGeneratorImageProduct extends Model
                 ->where('TEMPLATE_ID', $data['TEMPLATE_ID'])
                 ->where('LOJA', $data['LOJA'])
                 ->where('DATA_REQUISICAO', $data['DATA_REQUISICAO'])
-                ->where('REQUISICAO', $data['REQUISICAO'])
             )
             ->exists();
     }

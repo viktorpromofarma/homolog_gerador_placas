@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Models\Logs;
+use Illuminate\Database\Eloquent\Model;
 
 class DailyProducts extends Model
 
 {
-    protected $connection  = 'sqlsrv_secondary';
+    protected $connection  = 'sqlsrv';
 
     protected $table = 'ETIQUETA_PLACAS_RESULTADO';
 
@@ -17,30 +17,25 @@ class DailyProducts extends Model
     public $timestamps = false; 
 
 
- 
-
-
-    public static function getDailyProducts()
+    public static function getDailyProducts($loja)
     {
 
         $logs = Logs::all();
 
         $logs = json_decode(json_encode($logs), true);
-
-
         $ids = collect($logs)
-        ->flatMap(fn($log) => preg_match('/[\["](?:IDs:|ids"\s*:\s*")[^\d]*([\d,\s]+)/', $log['COMANDO_EXECUTADO'], $m) ? array_map('trim', explode(',', $m[1])) : [])
+        ->flatMap(fn($log) => preg_match('/[\["](?:IDS:|IDS"\s*:\s*")[^\d]*([\d,\s]+)/', $log['COMANDO_EXECUTADO'], $m) ? array_map('trim', explode(',', $m[1])) : [])
         ->filter()
         ->unique()
         ->values();
 
-
         $products = DailyProducts::query()
         ->whereNotNull('ID_TEMPLATE')
         ->whereNotNull('LOJA')
-        ->where('data_inicial', '<=', now()->format('Y-m-d'))
-        ->where('data_final', '>=', now()->format('Y-m-d'))
         ->whereNotin('ID', $ids)
+        ->where('loja', $loja)
+       
+       
         ->get();
 
 

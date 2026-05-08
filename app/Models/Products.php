@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Products extends Model
 {
-        protected $connection  = 'sqlsrv_secondary';
+        protected $connection  = 'sqlsrv';
 
         protected $table = 'PRODUTOS';
 

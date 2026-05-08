@@ -10,7 +10,7 @@ class PdfService
     private const ROWS     = 3;
     private const PAGE_W   = 210;
     private const PAGE_H   = 297;
-    private const MARGIN_X = (self::PAGE_W - self::COLS * self::IMG_W) / 2;
+    private const MARGIN_X = (self::PAGE_W - self::COLS * self::IMG_W) / 2.6;
     private const MARGIN_Y = (self::PAGE_H - self::ROWS * self::IMG_H) / 1.8;
 
     /**
@@ -29,6 +29,7 @@ class PdfService
 
         $tmpFiles = [];
 
+      
         try {
             foreach ($base64Images as $index => $base64Image) {
                 $tmpFiles[$index] = $this->saveTempImage($base64Image, $dir, $filename . '_tmp_' . $index);
