@@ -18,10 +18,28 @@ WORKDIR /tmp
 RUN curl -O -k https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk \
  && apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk
 
-RUN pecl channel-update pecl.php.net \
- && pecl install sqlsrv pdo_sqlsrv
+# Download SQLSRV source directly from GitHub (avoids pecl.php.net network dependency)
+RUN curl -L https://github.com/microsoft/msphpsql/releases/download/v5.12.0/Linux-5.12.0.tar.gz \
+    -o msphpsql.tar.gz \
+ && tar -xzf msphpsql.tar.gz
 
-FROM alpine:3.22 
+# Build sqlsrv extension
+RUN cd Linux-5.12.0/sqlsrv \
+ && phpize83 \
+ && ./configure --with-php-config=php-config83 \
+ && make \
+ && make install
+
+# Build pdo_sqlsrv extension
+RUN cd Linux-5.12.0/pdo_sqlsrv \
+ && phpize83 \
+ && ./configure --with-php-config=php-config83 \
+ && make \
+ && make install
+
+# ---------------------------------------------------------------------------
+
+FROM alpine:3.22
 
 ARG USER=developer
 ARG UID=1000
@@ -76,7 +94,7 @@ RUN addgroup -g ${UID} -S ${USER} \
  && adduser -u ${UID} -S ${USER} -G ${USER} \
  && mkdir -p /var/log/ /var/run/ /var/www/ \
  && chown -R ${USER}:${USER} /var/log/ /var/run/ /var/www/ \
- && chmod -R 775 /var/log/ /var/run /var/www 
+ && chmod -R 775 /var/log/ /var/run /var/www
 
 COPY ./php/php-fpm.conf /etc/php83/php-fpm.conf
 COPY ./php/php.ini /etc/php83/php.ini
