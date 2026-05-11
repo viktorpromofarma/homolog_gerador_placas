@@ -5,7 +5,6 @@ FROM alpine:3.20
 ARG USER=vinicius
 ARG UID=1000
 
-
 # Instalação de dependências essenciais
 RUN apk update && apk add --no-cache \
     curl \
@@ -32,7 +31,6 @@ RUN apk update && apk add --no-cache \
     php83-intl \
     php83-xml \
     php83-ctype \
-    php83-openssl \
     php83-phar \
     php83-pcntl \
     php83-session \
@@ -46,36 +44,39 @@ RUN apk update && apk add --no-cache \
     make \
     g++ \
     ca-certificates \
+    libstdc++ \
     && rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
 
 # Instalação do Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --no-interaction
+RUN curl -sS https://getcomposer.org/installer | php83 -- --install-dir=/usr/local/bin --filename=composer --no-interaction
 
-
-# Instalação da extensão do SQL Server (PDO)
-RUN apk add --no-cache libstdc++ ca-certificates && update-ca-certificates && \
+# Instalação do driver ODBC da Microsoft + extensões PHP sqlsrv compiladas da fonte
+RUN update-ca-certificates && \
     cd /tmp && \
-
     curl -k -SLO https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk && \
     curl -k -SLO https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.apk && \
     curl -k -SLO https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.sig && \
     curl -k -SLO https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.sig && \
-
     curl -k https://packages.microsoft.com/keys/microsoft.asc | gpg --import - && \
     gpg --verify msodbcsql17_17.10.6.1-1_amd64.sig msodbcsql17_17.10.6.1-1_amd64.apk && \
     gpg --verify mssql-tools_17.10.1.1-1_amd64.sig mssql-tools_17.10.1.1-1_amd64.apk && \
-
     apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk && \
     apk add --allow-untrusted mssql-tools_17.10.1.1-1_amd64.apk && \
-
-    pecl install sqlsrv pdo_sqlsrv && \
-
-    INI_DIR=$(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||") && \
+    # Compilar sqlsrv e pdo_sqlsrv do fonte (PECL não publica versões para PHP 8.3)
+    git clone --depth=1 --branch v5.12.0 https://github.com/microsoft/msphpsql.git /tmp/msphpsql && \
+    cd /tmp/msphpsql/source/sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=/usr/bin/php-config83 && \
+    make && make install && \
+    cd /tmp/msphpsql/source/pdo_sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=/usr/bin/php-config83 && \
+    make && make install && \
+    INI_DIR=$(php83 --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||") && \
     echo "extension=pdo_sqlsrv.so" > $INI_DIR/10_pdo_sqlsrv.ini && \
     echo "extension=sqlsrv.so" > $INI_DIR/20_sqlsrv.ini && \
     rm -rf /var/cache/apk/* /tmp/*
 
-    
 # Criação do usuário e diretórios necessários
 RUN addgroup -g ${UID} -S ${UID} \
     && adduser -u ${UID} -S ${USER} -G ${UID} \
@@ -90,8 +91,6 @@ COPY ./supervisor/supervisord.conf /etc/supervisord.conf
 COPY ./supervisor/conf.d/*.conf /etc/supervisor/conf.d/
 COPY ./php/php-fpm.conf /etc/php83/php-fpm.conf
 COPY ./php/php.ini /etc/php83/php.ini
-
-
 
 # Iniciar o Supervisor
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
