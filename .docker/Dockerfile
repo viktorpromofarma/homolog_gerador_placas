@@ -68,11 +68,11 @@ RUN apk add --no-cache git php83-dev autoconf make g++ unixodbc-dev && \
     git clone https://github.com/microsoft/msphpsql.git /tmp/msphpsql && \
     cd /tmp/msphpsql/source/sqlsrv && \
     phpize83 && \
-    ./configure --with-php-config=php-config83 && \
+    ./configure --with-php-config=php-config83 --with-unixODBC=/usr && \
     make && make install && \
     cd /tmp/msphpsql/source/pdo_sqlsrv && \
     phpize83 && \
-    ./configure --with-php-config=php-config83 && \
+    ./configure --with-php-config=php-config83 --with-unixODBC=/usr && \
     make && make install && \
     echo "extension=sqlsrv.so" > /etc/php83/conf.d/20_sqlsrv.ini && \
     echo "extension=pdo_sqlsrv.so" > /etc/php83/conf.d/10_pdo_sqlsrv.ini && \
