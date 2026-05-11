@@ -8,4 +8,4 @@ services:
     environment:
       - APP_PORT=9001
     volumes:
-      - "./.:/var/www/html"
+      - "./apps/gerador_placas/app:/var/www/html/"
