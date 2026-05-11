@@ -1,58 +1,21 @@
-FROM alpine:3.22 AS builder
+# Usando a imagem base do Alpine
+FROM alpine:3.20
 
-RUN apk add --no-cache \
-    curl \
-    gnupg \
-    unixodbc-dev \
-    autoconf \
-    make \
-    g++ \
-    ca-certificates \
-    php83 \
-    php83-dev \
-    php83-pear \
-    php83-openssl
-
-WORKDIR /tmp
-
-RUN curl -O -k https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk \
- && apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk
-
-# Download SQLSRV source directly from GitHub (avoids pecl.php.net network dependency)
-RUN curl -L https://github.com/microsoft/msphpsql/releases/download/v5.12.0/Linux-5.12.0.tar.gz \
-    -o msphpsql.tar.gz \
- && tar -xzf msphpsql.tar.gz
-
-# Build sqlsrv extension
-RUN cd Linux-5.12.0/sqlsrv \
- && phpize83 \
- && ./configure --with-php-config=php-config83 \
- && make \
- && make install
-
-# Build pdo_sqlsrv extension
-RUN cd Linux-5.12.0/pdo_sqlsrv \
- && phpize83 \
- && ./configure --with-php-config=php-config83 \
- && make \
- && make install
-
-# ---------------------------------------------------------------------------
-
-FROM alpine:3.22
-
-ARG USER=developer
+# Definindo os parâmetros de usuário e UID
+ARG USER=vinicius
 ARG UID=1000
 
+# Instalação de dependências essenciais
 RUN apk update && apk add --no-cache \
     curl \
-    ca-certificates \
     zip \
     unzip \
     sqlite \
     nodejs \
     npm \
+    supervisor \
     php83 \
+    php83-dev \
     php83-fpm \
     php83-curl \
     php83-mbstring \
@@ -60,45 +23,70 @@ RUN apk update && apk add --no-cache \
     php83-openssl \
     php83-pdo \
     php83-pdo_sqlite \
+    php83-pdo_mysql \
     php83-tokenizer \
     php83-fileinfo \
     php83-zip \
     php83-intl \
     php83-xml \
     php83-ctype \
+    php83-openssl \
     php83-phar \
     php83-pcntl \
     php83-session \
     php83-dom \
     php83-xmlreader \
     php83-xmlwriter \
-    php83-simplexml \
-    php83-iconv \
-    php83-redis \
-    php83-opcache \
+    php83-pear \
+    gnupg \
+    unixodbc-dev \ 
+    autoconf \
+    make \
+    g++ \
+    ca-certificates \
     && rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
 
-RUN curl -O -k https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk \
- && apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk
+# Instalação do Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --no-interaction
 
-COPY --from=builder /usr/lib/php83/modules/sqlsrv.so /usr/lib/php83/modules/
-COPY --from=builder /usr/lib/php83/modules/pdo_sqlsrv.so /usr/lib/php83/modules/
+# Instalação do extensão do SQL Server (PDO)
+RUN cd /tmp && \
+    curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk && \
+    curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.apk && \
+    curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.sig && \
+    curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.sig && \
+    curl https://packages.microsoft.com/keys/microsoft.asc | gpg --import - && \
+    gpg --verify msodbcsql17_17.10.6.1-1_amd64.sig msodbcsql17_17.10.6.1-1_amd64.apk && \
+    gpg --verify mssql-tools_17.10.1.1-1_amd64.sig mssql-tools_17.10.1.1-1_amd64.apk && \
+    apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk && \
+    apk add --allow-untrusted mssql-tools_17.10.1.1-1_amd64.apk && \
+    pecl install sqlsrv pdo_sqlsrv && \
+    echo extension=pdo_sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/10_pdo_sqlsrv.ini && \
+    echo extension=sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/20_sqlsrv.ini && \
+    rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
 
-RUN echo "extension=sqlsrv.so" > /etc/php83/conf.d/20_sqlsrv.ini \
- && echo "extension=pdo_sqlsrv.so" > /etc/php83/conf.d/10_pdo_sqlsrv.ini
+# Criação do usuário e diretórios necessários
+RUN addgroup -g ${UID} -S ${UID} \
+    && adduser -u ${UID} -S ${USER} -G ${UID} \
+    && mkdir -p /var/log/ /var/run/ /var/www/ \
+    && chown -R ${USER}:www-data /var/log/ \
+    && chown -R ${USER}:www-data /var/run/ \
+    && chown -R ${USER}:www-data /var/www/ \
+    && chmod -R 775 /var/log/ /var/run/ /var/www/ 
 
-RUN curl -sS https://getcomposer.org/installer | php \
-    -- --install-dir=/usr/local/bin --filename=composer
-
-RUN addgroup -g ${UID} -S ${USER} \
- && adduser -u ${UID} -S ${USER} -G ${USER} \
- && mkdir -p /var/log/ /var/run/ /var/www/ \
- && chown -R ${USER}:${USER} /var/log/ /var/run/ /var/www/ \
- && chmod -R 775 /var/log/ /var/run /var/www
-
+# Copiar os arquivos de configuração
+COPY ./supervisor/supervisord.conf /etc/supervisord.conf
+COPY ./supervisor/conf.d/*.conf /etc/supervisor/conf.d/
 COPY ./php/php-fpm.conf /etc/php83/php-fpm.conf
 COPY ./php/php.ini /etc/php83/php.ini
 
-WORKDIR /var/www/html
 
-CMD ["php-fpm83", "--nodaemonize", "--fpm-config", "/etc/php83/php-fpm.conf"]
+
+# Iniciar o Supervisor
+CMD ["supervisord", "-c", "/etc/supervisord.conf"]
+
+# Rodar o container com o usuário criado
+USER ${USER}
+
+# Definindo o diretório de trabalho
+WORKDIR /var/www/html
