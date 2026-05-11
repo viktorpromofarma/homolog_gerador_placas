@@ -39,30 +39,42 @@ RUN apk update && apk add --no-cache \
     php83-xmlwriter \
     php83-pear \
     gnupg \
-    unixodbc-dev \ 
+    unixodbc-dev \
     autoconf \
     make \
     g++ \
+    git \
     ca-certificates \
     && rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
 
 # Instalação do Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --no-interaction
 
-# Instalação do extensão do SQL Server (PDO)
+# Instalação da extensão do SQL Server (PDO) - compilando do fonte
 RUN cd /tmp && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.apk && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.sig && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.sig && \
     curl https://packages.microsoft.com/keys/microsoft.asc | gpg --import - && \
-    gpg --verify msodbcsql17_17.10.6.1-1_amd64.sig msodbcsql17_17.10.6.1-1_amd64.apk && \
+    gpg --verify msodbcsql17_17.10.6.1-1_amd64.sig msodbcsql17_17.10.6.1-1_amd39.apk && \
     gpg --verify mssql-tools_17.10.1.1-1_amd64.sig mssql-tools_17.10.1.1-1_amd64.apk && \
     apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk && \
     apk add --allow-untrusted mssql-tools_17.10.1.1-1_amd64.apk && \
-    pecl install sqlsrv pdo_sqlsrv && \
-    echo extension=pdo_sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/10_pdo_sqlsrv.ini && \
-    echo extension=sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/20_sqlsrv.ini && \
+    git clone --depth=1 --branch v5.12.0 https://github.com/microsoft/msphpsql.git /tmp/msphpsql && \
+    cd /tmp/msphpsql/source/sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=php-config83 --with-SQLSRV_ODBC_INCLUDE=/usr/include/msodbcsql17 && \
+    make -j$(nproc) && \
+    make install && \
+    cd /tmp/msphpsql/source/pdo_sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=php-config83 --with-SQLSRV_ODBC_INCLUDE=/usr/include/msodbcsql17 && \
+    make -j$(nproc) && \
+    make install && \
+    PHP_INI_DIR=$(php83 --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||") && \
+    echo "extension=pdo_sqlsrv.so" >> ${PHP_INI_DIR}/10_pdo_sqlsrv.ini && \
+    echo "extension=sqlsrv.so" >> ${PHP_INI_DIR}/20_sqlsrv.ini && \
     rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
 
 # Criação do usuário e diretórios necessários
@@ -72,15 +84,13 @@ RUN addgroup -g ${UID} -S ${UID} \
     && chown -R ${USER}:www-data /var/log/ \
     && chown -R ${USER}:www-data /var/run/ \
     && chown -R ${USER}:www-data /var/www/ \
-    && chmod -R 775 /var/log/ /var/run/ /var/www/ 
+    && chmod -R 775 /var/log/ /var/run/ /var/www/
 
 # Copiar os arquivos de configuração
 COPY ./supervisor/supervisord.conf /etc/supervisord.conf
 COPY ./supervisor/conf.d/*.conf /etc/supervisor/conf.d/
 COPY ./php/php-fpm.conf /etc/php83/php-fpm.conf
 COPY ./php/php.ini /etc/php83/php.ini
-
-
 
 # Iniciar o Supervisor
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
