@@ -173,6 +173,8 @@ class RecoverProducts extends Command
         </table>";
         }
 
+        
+
         try {
             $notification = new SendNotification();
 
