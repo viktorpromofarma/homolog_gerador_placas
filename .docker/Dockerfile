@@ -50,7 +50,7 @@ RUN apk update && apk add --no-cache \
 # Instalação do Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --no-interaction
 
-# Instalação do extensão do SQL Server (PDO)
+# Instalação do driver ODBC da Microsoft
 RUN cd /tmp && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/msodbcsql17_17.10.6.1-1_amd64.apk && \
     curl -O https://download.microsoft.com/download/e/4/e/e4e67866-dffd-428c-aac7-8d28ddafb39b/mssql-tools_17.10.1.1-1_amd64.apk && \
@@ -61,10 +61,22 @@ RUN cd /tmp && \
     gpg --verify mssql-tools_17.10.1.1-1_amd64.sig mssql-tools_17.10.1.1-1_amd64.apk && \
     apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk && \
     apk add --allow-untrusted mssql-tools_17.10.1.1-1_amd64.apk && \
-    pecl install sqlsrv pdo_sqlsrv && \
-    echo extension=pdo_sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/10_pdo_sqlsrv.ini && \
-    echo extension=sqlsrv.so >> $(php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||")/20_sqlsrv.ini && \
     rm -rf /var/cache/apk/* /tmp/* /usr/share/man /usr/share/doc
+
+# Compilar sqlsrv e pdo_sqlsrv direto do GitHub (suporte oficial ao PHP 8.3)
+RUN apk add --no-cache git php83-dev autoconf make g++ unixodbc-dev && \
+    git clone https://github.com/microsoft/msphpsql.git /tmp/msphpsql && \
+    cd /tmp/msphpsql/source/sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=php-config83 && \
+    make && make install && \
+    cd /tmp/msphpsql/source/pdo_sqlsrv && \
+    phpize83 && \
+    ./configure --with-php-config=php-config83 && \
+    make && make install && \
+    echo "extension=sqlsrv.so" > /etc/php83/conf.d/20_sqlsrv.ini && \
+    echo "extension=pdo_sqlsrv.so" > /etc/php83/conf.d/10_pdo_sqlsrv.ini && \
+    rm -rf /tmp/msphpsql /var/cache/apk/*
 
 # Criação do usuário e diretórios necessários
 RUN addgroup -g ${UID} -S ${UID} \
@@ -80,8 +92,6 @@ COPY ./supervisor/supervisord.conf /etc/supervisord.conf
 COPY ./supervisor/conf.d/*.conf /etc/supervisor/conf.d/
 COPY ./php/php-fpm.conf /etc/php83/php-fpm.conf
 COPY ./php/php.ini /etc/php83/php.ini
-
-
 
 # Iniciar o Supervisor
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
