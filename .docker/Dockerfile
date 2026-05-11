@@ -62,19 +62,31 @@ RUN update-ca-certificates && \
     gpg --verify mssql-tools_17.10.1.1-1_amd64.sig mssql-tools_17.10.1.1-1_amd64.apk && \
     apk add --allow-untrusted msodbcsql17_17.10.6.1-1_amd64.apk && \
     apk add --allow-untrusted mssql-tools_17.10.1.1-1_amd64.apk && \
-    # Compilar sqlsrv e pdo_sqlsrv do fonte (PECL não publica versões para PHP 8.3)
+    # Descobrir onde estão os headers do msodbcsql17 instalado
+    ODBC_DIR=$(find /opt/microsoft -name "msodbcsql.h" 2>/dev/null | head -1 | xargs dirname || echo "/opt/microsoft/msodbcsql17/include") && \
+    ODBC_BASE=$(echo "$ODBC_DIR" | sed 's|/include.*||') && \
+    echo "Usando ODBC dir: $ODBC_BASE" && \
+    # Clonar o repositório msphpsql
     git clone --depth=1 --branch v5.12.0 https://github.com/microsoft/msphpsql.git /tmp/msphpsql && \
+    # Compilar sqlsrv
     cd /tmp/msphpsql/source/sqlsrv && \
     phpize83 && \
-    ./configure --with-php-config=/usr/bin/php-config83 && \
-    make && make install && \
+    ./configure \
+        --with-php-config=/usr/bin/php-config83 \
+        --with-msodbcsql17-dir="$ODBC_BASE" && \
+    make -j$(nproc) && make install && \
+    # Compilar pdo_sqlsrv
     cd /tmp/msphpsql/source/pdo_sqlsrv && \
     phpize83 && \
-    ./configure --with-php-config=/usr/bin/php-config83 && \
-    make && make install && \
+    ./configure \
+        --with-php-config=/usr/bin/php-config83 \
+        --with-msodbcsql17-dir="$ODBC_BASE" && \
+    make -j$(nproc) && make install && \
+    # Registrar as extensões
     INI_DIR=$(php83 --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||") && \
-    echo "extension=pdo_sqlsrv.so" > $INI_DIR/10_pdo_sqlsrv.ini && \
-    echo "extension=sqlsrv.so" > $INI_DIR/20_sqlsrv.ini && \
+    echo "extension=sqlsrv.so"     > "$INI_DIR/10_sqlsrv.ini" && \
+    echo "extension=pdo_sqlsrv.so" > "$INI_DIR/20_pdo_sqlsrv.ini" && \
+    # Limpeza
     rm -rf /var/cache/apk/* /tmp/*
 
 # Criação do usuário e diretórios necessários
